@@ -1,4 +1,5 @@
 """Тесты конвейера обработки данных (Повыш. 9)."""
+import sys
 import unittest
 from collections.abc import Callable, Iterator
 from functools import reduce
@@ -121,6 +122,16 @@ class PipelineErrorTests(unittest.TestCase):
             take(-1)
         with self.assertRaisesRegex(TypeError, "^сколько: "):
             take(2.0)  # type: ignore[arg-type]
+
+    def test_take_rejects_counts_islice_cannot_handle(self) -> None:
+        # Без проверки конвейер собрался бы, а упал при запуске — и
+        # сообщением islice на английском.
+        take(sys.maxsize)
+        with self.assertRaisesRegex(
+            ValueError, f"^сколько: ожидалось целое число не больше "
+                        f"{sys.maxsize}, получено "
+        ):
+            take(sys.maxsize + 1)
 
     def test_step_returning_not_a_stream(self) -> None:
         total = pipeline(take(3), sum)  # type: ignore[arg-type]

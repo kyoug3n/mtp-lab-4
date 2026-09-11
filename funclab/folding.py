@@ -7,7 +7,7 @@
 import operator
 from functools import reduce
 
-from funclab.checks import check_count
+from funclab.checks import check_non_negative_int
 
 
 def factorial(n: int) -> int:
@@ -39,5 +39,5 @@ def factorial(n: int) -> int:
         принимается).
     :raises ValueError: если ``n`` отрицательное.
     """
-    check_count(n, "n")
+    check_non_negative_int(n, "n")
     return reduce(operator.mul, range(2, n + 1), 1)

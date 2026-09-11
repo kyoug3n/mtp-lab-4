@@ -58,6 +58,17 @@ class MapAllTests(unittest.TestCase):
         ):
             map_all([abs, 5], [1])  # type: ignore[list-item]
 
+    def test_arguments_that_are_not_streams(self) -> None:
+        # Сообщения такие же, как у конвейера: имя аргумента впереди.
+        with self.assertRaisesRegex(
+            TypeError, "^элементы: ожидался итерируемый объект, получено 5$"
+        ):
+            map_all([abs], 5)  # type: ignore[arg-type]
+        with self.assertRaisesRegex(
+            TypeError, "^функции: ожидался итерируемый объект, "
+        ):
+            map_all(abs, [1])  # type: ignore[arg-type]
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,11 +20,17 @@
 завершится.
 """
 from collections.abc import Callable, Iterable, Iterator
+import sys
 from functools import reduce
 from itertools import islice
 from typing import Any, TypeVar
 
-from funclab.checks import check_callable, check_count
+from funclab.checks import (
+    as_stream,
+    check_callable,
+    check_callables,
+    check_non_negative_int,
+)
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -37,8 +43,8 @@ def pipeline(*steps: Step) -> Callable[[Iterable[Any]], Iterator[Any]]:
 
     Шаги проверяются сразу, при сборке, а не при первом запуске.
     Собранный конвейер можно запускать сколько угодно раз: каждый запуск
-    создаёт свою цепочку ленивых итераторов. Конвейер без шагов возвращает
-    данные без изменений.
+    создаёт свою цепочку ленивых итераторов. Конвейер без шагов выдаёт те
+    же элементы, что были на входе.
 
     >>> from funclab.primes import primes
     >>> pick = pipeline(
@@ -51,17 +57,20 @@ def pipeline(*steps: Step) -> Callable[[Iterable[Any]], Iterator[Any]]:
     >>> list(pick([1, 5, 9, 2]))
     [10, 50, 90]
 
+    Номер шага попадает в сообщение об ошибке — и при сборке, и когда шаг
+    вернул не поток. Ошибка внутри самой функции пользователя приходит от
+    неё без номера, как если бы её вызвали напрямую.
+
     :raises TypeError: при сборке — если шаг не функция; при запуске —
         если данные или результат шага не итерируемые.
     """
-    for position, step in enumerate(steps, start=1):
-        check_callable(step, f"шаг {position}")
+    check_callables(steps, "шаг")
 
     def run(data: Iterable[Any]) -> Iterator[Any]:
         return reduce(
             _apply_step,
             enumerate(steps, start=1),
-            _as_stream(data, "данные"),
+            as_stream(data, "данные"),
         )
 
     return run
@@ -92,10 +101,15 @@ def transform(
 def take(count: int) -> Callable[[Iterable[T]], Iterator[T]]:
     """Шаг: первые ``count`` элементов; остальные даже не запрашиваются.
 
+    Верхняя граница ``sys.maxsize`` — ограничение ``islice``; без проверки
+    ``take(10**100)`` собрался бы, а упал только при запуске, да ещё
+    сообщением на английском.
+
     :raises TypeError: если ``count`` не целое число.
-    :raises ValueError: если ``count`` отрицательное.
+    :raises ValueError: если ``count`` отрицательное или больше
+        ``sys.maxsize``.
     """
-    check_count(count, "сколько")
+    check_non_negative_int(count, "сколько", maximum=sys.maxsize)
     return lambda stream: islice(stream, count)
 
 
@@ -104,14 +118,4 @@ def _apply_step(
 ) -> Iterator[Any]:
     """Один шаг свёртки: пропустить поток через шаг с номером."""
     position, step = numbered
-    return _as_stream(step(stream), f"шаг {position}")
-
-
-def _as_stream(value: Iterable[Any], name: str) -> Iterator[Any]:
-    """Итератор по ``value`` с понятной ошибкой, если это не поток."""
-    try:
-        return iter(value)
-    except TypeError:
-        raise TypeError(
-            f"{name}: ожидался итерируемый объект, получено {value!r}"
-        ) from None
+    return as_stream(step(stream), f"шаг {position}")
