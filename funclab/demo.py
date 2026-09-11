@@ -8,6 +8,7 @@
 код гарантированно совпадает с выполненным. Строки — константы этого
 модуля, ввод пользователя здесь не выполняется.
 """
+import argparse
 import platform
 import subprocess
 import sys
@@ -43,6 +44,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
         "list(map_all([str.upper, len, str.isdigit], ['abc', '42']))",
         "list(islice(map_all([lambda p: p % 4, lambda p: p % 6], primes()),"
         " 6))",
+        "list(zip(*map_all([abs, str], [-2, 3])))  # группировка по функциям",
         "rows = map_all([factorial], [3, -1])  # ошибки нет: map ленивый",
         "next(rows)",
         "next(rows)",
@@ -114,19 +116,32 @@ def build_sections() -> list[str]:
     return lines
 
 
+REPOSITORY = Path(__file__).resolve().parent.parent
+
+# Сам протокол из ревизии исключён: он меняется при каждой генерации, и
+# из-за него штамп всегда сообщал бы о незакоммиченных изменениях.
+CODE_ONLY = [".", ":(exclude)reports"]
+
+
+def _git(*arguments: str) -> str:
+    """Вывод git-команды в папке репозитория."""
+    return subprocess.run(
+        ["git", *arguments], cwd=REPOSITORY,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
 def git_revision() -> str:
-    """Короткий хеш и дата текущего коммита (с пометкой о правках)."""
+    """Ревизия кода: хеш и дата последнего коммита, менявшего не отчёты.
+
+    Команды выполняются в папке репозитория, а не в текущей, поэтому
+    штамп не зависит от того, откуда запущен модуль.
+    """
     try:
-        revision = subprocess.run(
-            ["git", "log", "-1", "--format=%h (%ci)"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        status = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
+        revision = _git("log", "-1", "--format=%h (%ci)", "--", *CODE_ONLY)
+        status = _git("status", "--porcelain", "--", *CODE_ONLY)
     except (OSError, subprocess.CalledProcessError):
-        return "неизвестна (git недоступен)"
+        return "неизвестна (папка не репозиторий git или git недоступен)"
     if status:
         revision += " + незакоммиченные изменения"
     return revision
@@ -144,15 +159,32 @@ def build_report() -> str:
     return "\n".join(header + build_sections()) + "\n"
 
 
-def main(argv: list[str]) -> None:
-    """Записать протокол в файл из ``argv`` или вывести его на экран."""
+def main(argv: list[str]) -> int:
+    """Записать протокол в указанный файл или вывести его на экран.
+
+    :return: код возврата процесса (0 — успех).
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m funclab",
+        description="Демонстрация заданий лабораторной работы №4.",
+    )
+    parser.add_argument(
+        "file", metavar="файл", nargs="?",
+        help="куда записать протокол; без аргумента — вывод на экран",
+    )
+    path = parser.parse_args(argv).file
     report = build_report()
-    if argv:
-        Path(argv[0]).write_text(report, encoding="utf-8", newline="\n")
-        print(f"Протокол записан в {argv[0]}")
-    else:
+    if path is None:
         print(report, end="")
+        return 0
+    try:
+        Path(path).write_text(report, encoding="utf-8", newline="\n")
+    except OSError as error:
+        print(f"Не удалось записать {path}: {error.strerror}.")
+        return 1
+    print(f"Протокол записан в {path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))
