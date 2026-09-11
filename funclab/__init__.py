@@ -7,5 +7,6 @@
 * Средн. 10 — несколько функций к списку через ``map``:
   :mod:`funclab.mapping`;
 * Повыш. 5 — собственный класс-итератор:
-  :class:`funclab.primes.PrimeIterator`.
+  :class:`funclab.primes.PrimeIterator`;
+* Повыш. 9 — конвейер обработки данных: :mod:`funclab.pipeline`.
 """
