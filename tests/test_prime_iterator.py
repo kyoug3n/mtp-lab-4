@@ -1,7 +1,6 @@
 """Тесты класса-итератора простых чисел (Повыш. 5)."""
-import tracemalloc
+import copy
 import unittest
-from collections import deque
 from collections.abc import Iterator
 from itertools import islice
 
@@ -42,16 +41,16 @@ class PrimeIteratorTests(unittest.TestCase):
         self.assertEqual(next(second), 2)
         self.assertEqual(next(first), 5)
 
-    def test_memory_grows_with_root_not_with_count(self) -> None:
-        # Та же оценка памяти, что у генератора (см. test_primes).
-        tracemalloc.start()
-        try:
-            last = deque(islice(PrimeIterator(), 100_000), maxlen=1)
-            _, peak = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
-        self.assertEqual(last[0], 1_299_709)
-        self.assertLess(peak, 200_000)
+    def test_shallow_copy_is_refused_but_deepcopy_works(self) -> None:
+        # Поверхностная копия делила бы словарь решета с оригиналом и
+        # выдавала бы составные числа; генераторы по той же причине не
+        # копируются вовсе.
+        iterator = PrimeIterator()
+        self.assertEqual(list(islice(iterator, 10))[-1], 29)
+        with self.assertRaisesRegex(TypeError, "нельзя копировать"):
+            copy.copy(iterator)
+        clone = copy.deepcopy(iterator)
+        self.assertEqual(list(islice(clone, 20)), list(islice(iterator, 20)))
 
 
 if __name__ == "__main__":

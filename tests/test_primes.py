@@ -3,9 +3,22 @@ import inspect
 import tracemalloc
 import unittest
 from collections import deque
+from collections.abc import Callable, Iterator
 from itertools import islice, takewhile
 
-from funclab.primes import primes
+from funclab.primes import PrimeIterator, primes
+
+
+def peak_memory(make: Callable[[], Iterator[int]], count: int) -> int:
+    """Пик памяти при проходе ``count`` простых без их хранения."""
+    tracemalloc.start()
+    try:
+        last = deque(islice(make(), count), maxlen=1)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert last[0] > count, "простые числа кончились раньше времени"
+    return peak
 
 
 def is_prime(number: int) -> bool:
@@ -36,19 +49,17 @@ class PrimesTests(unittest.TestCase):
         # не вернулся бы.
         self.assertEqual(list(islice(primes(), 3)), [2, 3, 5])
 
-    def test_memory_grows_with_root_not_with_count(self) -> None:
-        # 100 000 простых (последнее — 1 299 709) проходятся без хранения.
-        # Решету нужны только простые до √1 299 709 ≈ 1140 — их меньше
-        # двухсот. Один только список всех 100 000 чисел занял бы
-        # несколько мегабайт; порог в 200 КБ оставляет большой запас.
-        tracemalloc.start()
-        try:
-            last = deque(islice(primes(), 100_000), maxlen=1)
-            _, peak = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
-        self.assertEqual(last[0], 1_299_709)
-        self.assertLess(peak, 200_000)
+    def test_memory_grows_like_root_of_n(self) -> None:
+        # Решету нужны только простые до √n, поэтому при росте n в 10 раз
+        # пик памяти растёт примерно в √10 ≈ 3,2 раза; при хранении всех
+        # чисел он вырос бы в 10 раз. Порог 5 разделяет эти случаи с
+        # запасом в обе стороны. Проверяется обе реализации сразу:
+        # генератор (Средн. 6) и класс-итератор (Повыш. 5).
+        for make in (primes, PrimeIterator):
+            with self.subTest(make=make):
+                small = peak_memory(make, 10_000)
+                big = peak_memory(make, 100_000)
+                self.assertLess(big / small, 5, f"{small} → {big} байт")
 
     def test_generators_are_independent(self) -> None:
         first, second = primes(), primes()

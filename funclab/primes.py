@@ -13,10 +13,16 @@
 Очередное нечётное число простое, если его нет в словаре. Кратные p
 начинают вычёркиваться с p², поэтому в словаре только простые до √n:
 память растёт как количество простых до √n, а не до n. Простые для
-вычёркивания берутся из второго, отстающего экземпляра того же генератора.
+вычёркивания берутся из отстающего экземпляра того же генератора; он, в
+свою очередь, заводит свой, но цепочка короткая: её глубина растёт как
+log log n (для первых 100 000 простых — четыре уровня).
 """
 from collections.abc import Iterator
 from itertools import count
+
+# Двойка и тройка выдаются без решета: чётные числа не проверяются, а
+# вычёркивание кратных начинается только с 3² = 9.
+FIRST_PRIMES = (2, 3)
 
 
 def primes() -> Iterator[int]:
@@ -28,13 +34,12 @@ def primes() -> Iterator[int]:
     >>> list(takewhile(lambda p: p < 30, primes()))
     [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
     """
-    yield 2
-    yield 3
+    yield from FIRST_PRIMES
     multiples: dict[int, int] = {}
     # Отстающий генератор: тело функции не выполняется до первого next(),
     # поэтому рекурсивный вызов не уходит в бесконечность.
     base = primes()
-    next(base)  # 2 не нужно: чётные числа не проверяются
+    next(base)  # 2 пропускаем: чётные числа не проверяются
     prime = next(base)  # 3 — первое простое, чьи кратные вычёркиваются
     for candidate in count(5, 2):
         if candidate in multiples:
@@ -56,9 +61,11 @@ class PrimeIterator:
     записей показывает, что делает за программиста ``yield``. Генератор
     хранит своё состояние сам — локальные переменные и место, где
     выполнение остановилось. Класс хранит его явно в атрибутах, а
-    ``__next__`` каждый раз начинает сначала и по ``_last`` понимает,
+    ``__next__`` каждый раз начинает сначала и по этим атрибутам понимает,
     откуда продолжать:
 
+    * ``_emitted`` — сколько чисел из ``FIRST_PRIMES`` уже выдано (у
+      генератора это место остановки на ``yield from``);
     * ``_last`` — последнее проверенное число (у генератора это переменная
       цикла ``candidate``);
     * ``_multiples`` и ``_prime`` — то же, что ``multiples`` и ``prime``;
@@ -82,9 +89,10 @@ class PrimeIterator:
     """
 
     def __init__(self) -> None:
-        self._last = 0
+        self._emitted = 0
+        self._last = FIRST_PRIMES[-1]
         self._multiples: dict[int, int] = {}
-        self._prime = 3
+        self._prime = FIRST_PRIMES[-1]
         self._base: PrimeIterator | None = None
 
     def __iter__(self) -> "PrimeIterator":
@@ -97,10 +105,10 @@ class PrimeIterator:
 
     def __next__(self) -> int:
         """Следующее простое число."""
-        if self._last < 3:
-            # Первые два вызова: 2 и 3 выдаются без решета.
-            self._last = 2 if self._last == 0 else 3
-            return self._last
+        if self._emitted < len(FIRST_PRIMES):
+            prime = FIRST_PRIMES[self._emitted]
+            self._emitted += 1
+            return prime
         while True:
             self._last += 2
             candidate = self._last
@@ -113,12 +121,26 @@ class PrimeIterator:
                 self._prime = next(self._base_primes())
             _strike(self._multiples, candidate + step, step)
 
+    def __copy__(self) -> "PrimeIterator":
+        """Запретить поверхностное копирование.
+
+        ``copy.copy`` скопировал бы ссылки на словарь решета и на
+        отстающий итератор, и две «независимые» копии портили бы состояние
+        друг друга, молча выдавая составные числа. Генераторы Python по
+        той же причине не копируются вовсе. ``copy.deepcopy`` работает:
+        он копирует и состояние.
+        """
+        raise TypeError(
+            "PrimeIterator нельзя копировать поверхностно: копия делила бы "
+            "состояние решета (для копии используйте copy.deepcopy)"
+        )
+
     def _base_primes(self) -> "PrimeIterator":
         """Отстающий итератор, уже прошедший 2 и 3 (создаётся один раз)."""
         if self._base is None:
             self._base = PrimeIterator()
-            next(self._base)
-            next(self._base)
+            for _ in FIRST_PRIMES:
+                next(self._base)
         return self._base
 
 
