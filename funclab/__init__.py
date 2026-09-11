@@ -2,5 +2,6 @@
 
 Вариант 4:
 
-* Средн. 4 — факториал через ``reduce``: :mod:`funclab.folding`.
+* Средн. 4 — факториал через ``reduce``: :mod:`funclab.folding`;
+* Средн. 6 — генератор простых чисел: :func:`funclab.primes.primes`.
 """

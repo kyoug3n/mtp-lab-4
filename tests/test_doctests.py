@@ -2,9 +2,9 @@
 import doctest
 import unittest
 
-from funclab import checks, folding
+from funclab import checks, folding, primes
 
-MODULES = [checks, folding]
+MODULES = [checks, folding, primes]
 
 
 def load_tests(
