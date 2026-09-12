@@ -1,31 +1,30 @@
-"""Тесты генератора простых чисел (Средн. 6)."""
+"""Тесты генератора простых чисел и решета (Средн. 6)."""
 import inspect
-import tracemalloc
 import unittest
 from collections import deque
-from collections.abc import Callable, Iterator
-from itertools import islice, takewhile
+from itertools import count, islice, takewhile
+from math import isqrt
 
-from funclab.primes import PrimeIterator, primes
-
-
-def peak_memory(make: Callable[[], Iterator[int]], count: int) -> int:
-    """Пик памяти при проходе ``count`` простых без их хранения."""
-    tracemalloc.start()
-    try:
-        last = deque(islice(make(), count), maxlen=1)
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    assert last[0] > count, "простые числа кончились раньше времени"
-    return peak
+from funclab.primes import FIRST_PRIMES, PrimeIterator, _Sieve, primes
 
 
 def is_prime(number: int) -> bool:
     """Наивная проверка делением — независимый эталон для сверки."""
     return number >= 2 and all(
-        number % divisor for divisor in range(2, int(number ** 0.5) + 1)
+        number % divisor for divisor in range(2, isqrt(number) + 1)
     )
+
+
+def run_sieve(amount: int) -> tuple[_Sieve, int]:
+    """Прогнать решето до ``amount``-го простого; вернуть его и число."""
+    sieve = _Sieve(primes)
+    found = len(FIRST_PRIMES)
+    for candidate in count(5, 2):
+        if sieve.accepts(candidate):
+            found += 1
+            if found == amount:
+                return sieve, candidate
+    raise AssertionError("недостижимо: count бесконечен")
 
 
 class PrimesTests(unittest.TestCase):
@@ -49,23 +48,42 @@ class PrimesTests(unittest.TestCase):
         # не вернулся бы.
         self.assertEqual(list(islice(primes(), 3)), [2, 3, 5])
 
-    def test_memory_grows_like_root_of_n(self) -> None:
-        # Решету нужны только простые до √n, поэтому при росте n в 10 раз
-        # пик памяти растёт примерно в √10 ≈ 3,2 раза; при хранении всех
-        # чисел он вырос бы в 10 раз. Порог 5 разделяет эти случаи с
-        # запасом в обе стороны. Проверяется обе реализации сразу:
-        # генератор (Средн. 6) и класс-итератор (Повыш. 5).
-        for make in (primes, PrimeIterator):
-            with self.subTest(make=make):
-                small = peak_memory(make, 10_000)
-                big = peak_memory(make, 100_000)
-                self.assertLess(big / small, 5, f"{small} → {big} байт")
-
     def test_generators_are_independent(self) -> None:
         first, second = primes(), primes()
         self.assertEqual([next(first) for _ in range(5)], [2, 3, 5, 7, 11])
         self.assertEqual(next(second), 2)
         self.assertEqual(next(first), 13)
+
+
+class SieveTests(unittest.TestCase):
+    """Решето — общее ядро генератора и класса-итератора."""
+
+    def test_keeps_one_entry_per_odd_prime_up_to_root(self) -> None:
+        # Отсюда и берётся экономия памяти: хранятся не найденные простые,
+        # а только те, чей квадрат уже пройден, — то есть простые до √n.
+        # Сравнение точное, без измерения памяти и порогов.
+        for amount in (1_000, 10_000, 100_000):
+            with self.subTest(amount=amount):
+                sieve, last = run_sieve(amount)
+                expected = sum(1 for odd in range(3, isqrt(last) + 1, 2)
+                               if is_prime(odd))
+                self.assertEqual(len(sieve), expected)
+                # Найденных простых на порядок больше, чем хранимых,
+                # и с ростом amount разрыв только увеличивается.
+                self.assertLess(len(sieve) * 10, amount)
+
+    def test_chain_of_lagging_sieves_is_short(self) -> None:
+        # Каждому решету нужны простые до √n, тому — до √√n и так далее,
+        # поэтому цепочка растёт как log log n. Считаются все решёта
+        # вместе с основным.
+        iterator = PrimeIterator()
+        deque(islice(iterator, 100_000), maxlen=0)
+        sieve, levels = iterator._sieve, 1
+        while sieve._base is not None:
+            base = sieve._base
+            assert isinstance(base, PrimeIterator)
+            sieve, levels = base._sieve, levels + 1
+        self.assertEqual(levels, 4)
 
 
 if __name__ == "__main__":
