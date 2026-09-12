@@ -49,6 +49,18 @@ class MapAllTests(unittest.TestCase):
         next(rows)
         self.assertEqual(calls, [1])
 
+    def test_arguments_are_checked_before_the_first_row(self) -> None:
+        # Ленивы вычисления, а не проверка аргументов: и встроенный map,
+        # и map_all отвергают негодный поток сразу, не дожидаясь next.
+        with self.assertRaises(TypeError):
+            map(abs, 5)  # type: ignore[call-overload]
+        with self.assertRaises(TypeError):
+            map_all([abs], 5)  # type: ignore[arg-type]
+        # При годных аргументах вызов остаётся ленивым: бесконечный поток
+        # принят, а элементы ещё не читались.
+        rows = map_all([abs], count(-2))
+        self.assertEqual(next(rows), (2,))
+
     def test_no_functions_give_empty_rows(self) -> None:
         self.assertEqual(list(map_all([], [1, 2])), [(), ()])
 
