@@ -16,10 +16,10 @@
 | Уровень | № | Задание | Код | Тесты | Коммиты |
 |---|---|---|---|---|---|
 | Средний | 4 | Факториал через `reduce` | [`folding.py`](funclab/folding.py): `factorial` | [`test_folding.py`](tests/test_folding.py) | `8eaed31`, `256707f` |
-| Средний | 6 | Генератор простых чисел | [`primes.py`](funclab/primes.py): `primes` | [`test_primes.py`](tests/test_primes.py) | `93a50aa`, `803bab4` |
-| Средний | 10 | Применить несколько функций к списку через `map` | [`mapping.py`](funclab/mapping.py): `map_all` | [`test_mapping.py`](tests/test_mapping.py) | `a392235`, `256707f` |
-| Повышенный | 5 | Собственный класс-итератор | [`primes.py`](funclab/primes.py): `PrimeIterator` | [`test_prime_iterator.py`](tests/test_prime_iterator.py) | `aae2c4c`, `803bab4` |
-| Повышенный | 9 | Pipeline обработки данных | [`pipeline.py`](funclab/pipeline.py): `pipeline`, `keep`, `transform`, `take` | [`test_pipeline.py`](tests/test_pipeline.py) | `8e01e5c`, `256707f` |
+| Средний | 6 | Генератор простых чисел | [`primes.py`](funclab/primes.py): `primes`, `_Sieve` | [`test_primes.py`](tests/test_primes.py) | `93a50aa`, `803bab4`, `ae136f8`, `2517148` |
+| Средний | 10 | Применить несколько функций к списку через `map` | [`mapping.py`](funclab/mapping.py): `map_all` | [`test_mapping.py`](tests/test_mapping.py) | `a392235`, `256707f`, `5fec6dd` |
+| Повышенный | 5 | Собственный класс-итератор | [`primes.py`](funclab/primes.py): `PrimeIterator` | [`test_prime_iterator.py`](tests/test_prime_iterator.py) | `aae2c4c`, `803bab4`, `ae136f8` |
+| Повышенный | 9 | Pipeline обработки данных | [`pipeline.py`](funclab/pipeline.py): `pipeline`, `keep`, `transform`, `take` | [`test_pipeline.py`](tests/test_pipeline.py) | `8e01e5c`, `256707f`, `1eaf7ef` |
 
 Задания связаны: конвейер берёт данные из генератора простых чисел, `map_all` входит в
 конвейер шагом-обёрткой (`lambda stream: map_all([…], stream)`), `reduce` сворачивает
@@ -72,8 +72,9 @@ python -m mypy --strict funclab tests # аннотации типов (pip insta
 (`islice`, `takewhile`). Алгоритм — решето Эратосфена без верхней границы: для
 каждого простого p хранится только его ближайшее непройденное кратное, а вычёркивание
 начинается с p². Поэтому в памяти только простые до √n. Простые для вычёркивания даёт
-отстающий экземпляр того же генератора; он заводит свой, но глубина этой цепочки
-растёт как log log n (для первых 100 000 простых — четыре уровня).
+отстающий экземпляр той же реализации; он заводит свой, но глубина цепочки растёт как
+log log n: для первых 100 000 простых работают четыре решета. Само решето вынесено в
+класс `_Sieve` — оно общее у генератора и класса-итератора.
 
 **Несколько функций через `map`.** Формулировка допускает четыре трактовки:
 группировка по элементам (кортеж на элемент), группировка по функциям (список на
@@ -84,11 +85,12 @@ python -m mypy --strict funclab tests # аннотации типов (pip insta
 `zip`, обратно — нет: каждой функции пришлось бы читать поток заново.
 
 **Класс-итератор.** `PrimeIterator` — тот же алгоритм, что у генератора, записанный
-через `__iter__`/`__next__`. Повтор алгоритма сознательный: сравнение показывает, что
-делает `yield`. Генератор сам помнит локальные переменные и место остановки, а класс
-хранит это в атрибутах и по ним понимает, откуда продолжить. Отстающий итератор
-создаётся при первой надобности, а не в `__init__` — иначе каждый итератор создавал
-бы следующий, и конструктор упал бы с `RecursionError`; генератору эта ленивость
+через `__iter__`/`__next__`. Решето у обоих буквально одно и то же (`_Sieve`), поэтому
+сравнение показывает ровно то, ради чего задание и дано: что делает `yield`. Генератор
+сам помнит локальные переменные и место остановки, а класс хранит это в атрибутах
+`_emitted` и `_last` и по ним понимает, откуда продолжить. Отстающий источник простых
+создаётся при первой надобности, а не в `__init__` — иначе каждое решето создавало
+бы следующее, и конструктор упал бы с `RecursionError`; генератору эта ленивость
 достаётся даром. Поверхностное копирование запрещено: копия делила бы состояние
 решета и выдавала бы составные числа (генераторы по той же причине не копируются).
 
@@ -116,6 +118,9 @@ python -m mypy --strict funclab tests # аннотации типов (pip insta
 - Ошибка внутри функции пользователя в `map_all` или конвейере появляется не при
   вызове, а когда очередь доходит до этого элемента: вычисления ленивые. Номера шага
   в таком сообщении нет — оно приходит от самой функции.
+- Ленивы именно вычисления, а не проверка аргументов: `map_all` берёт итератор по
+  элементам сразу при вызове, поэтому негодный аргумент отвергается там же, а не при
+  первом `next`. Встроенный `map` ведёт себя так же.
 
 ## Что доказывают тесты
 
@@ -123,10 +128,12 @@ python -m mypy --strict funclab tests # аннотации типов (pip insta
 |---|---|
 | `factorial` совпадает с `math.factorial` для n = 0…1000 | `FactorialTests.test_matches_math_factorial` |
 | `primes()` совпадает с наивной проверкой делением до 20 000 | `PrimesTests.test_matches_naive_check_up_to_20000` |
-| Память решета растёт как √n, а не как количество простых | `PrimesTests.test_memory_grows_like_root_of_n` |
+| Решето хранит по одной записи на простое до √n, а не все найденные | `SieveTests.test_keeps_one_entry_per_odd_prime_up_to_root` |
+| Отстающих решёт для первых 100 000 простых ровно четыре | `SieveTests.test_chain_of_lagging_sieves_is_short` |
 | `PrimeIterator` выдаёт те же 20 000 чисел, что генератор | `PrimeIteratorTests.test_same_numbers_as_generator` |
 | Поверхностная копия итератора отвергнута, `deepcopy` работает | `PrimeIteratorTests.test_shallow_copy_is_refused_but_deepcopy_works` |
 | `map_all` принимает функции из генератора и бесконечный поток элементов | `MapAllTests.test_functions_may_come_from_generator`, `test_items_may_be_one_shot_or_infinite` |
+| Негодные аргументы `map_all` отвергаются при вызове, как и у `map` | `MapAllTests.test_arguments_are_checked_before_the_first_row` |
 | Элементы проходят шаги конвейера по одному, `take` не запрашивает лишнего | `PipelineTests.test_elements_pass_all_steps_one_by_one` |
 | Вложенный конвейер равен плоскому | `PipelineTests.test_pipeline_is_a_step_itself` |
 | `take` отвергает значения, которые не осилит `islice` | `PipelineErrorTests.test_take_rejects_counts_islice_cannot_handle` |
