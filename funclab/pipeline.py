@@ -19,8 +19,8 @@
 весь поток сразу, как только конвейер запущен, и на бесконечном входе не
 завершится.
 """
-from collections.abc import Callable, Iterable, Iterator
 import sys
+from collections.abc import Callable, Iterable, Iterator
 from functools import reduce
 from itertools import islice
 from typing import Any, TypeVar
